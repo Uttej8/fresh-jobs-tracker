@@ -28,6 +28,19 @@ FOREIGN = ['canada','india','united kingdom','uk','england','scotland','germany'
  'cape town','manila','jakarta','kuala lumpur','seoul','taipei','shanghai','beijing','shenzhen','bucharest',
  'belgrade','kyiv','prague','budapest','vienna','milan','rome','istanbul','cairo','tbilisi','yerevan','riga','tallinn']
 
+# Remaining countries (so an unlisted "Remote - <country>" cannot slip through when unclear locations are on)
+# plus Canadian provinces and Indian states. Puerto Rico and US territories are deliberately NOT here.
+FOREIGN += ['afghanistan','albania','algeria','andorra','angola','armenia','azerbaijan','bahrain','barbados','belarus',
+ 'belize','benin','bhutan','bolivia','bosnia','botswana','brunei','bulgaria','burkina faso','cambodia','cameroon',
+ 'croatia','cuba','cyprus','denmark','dominican republic','ecuador','el salvador','estonia','ethiopia','fiji','ghana',
+ 'guatemala','haiti','honduras','iceland','iran','iraq','jamaica','jordan','kazakhstan','kuwait','kyrgyzstan','laos',
+ 'latvia','lebanon','libya','liechtenstein','lithuania','luxembourg','macedonia','madagascar','malta','mauritius',
+ 'moldova','monaco','mongolia','montenegro','morocco','mozambique','myanmar','namibia','nepal','nicaragua','oman',
+ 'panama','paraguay','peru','qatar','rwanda','senegal','slovakia','slovenia','sudan','syria','tanzania','tunisia',
+ 'turkmenistan','uganda','uruguay','uzbekistan','venezuela','yemen','zambia','zimbabwe',
+ 'ontario','quebec','british columbia','alberta','manitoba','saskatchewan','nova scotia','new brunswick',
+ 'newfoundland','karnataka','maharashtra','tamil nadu','telangana','kerala','gujarat','haryana','uttar pradesh']
+
 # State codes that are ALSO country codes (CA Canada, IN India, DE Germany...). A bare ", IN" proves nothing,
 # so these only count as US when no foreign signal is present.
 AMBIG_CODES = {'CA','IN','DE','IL','CO','MA','ID','GA','AL','PA','AR','AZ','LA','MD','ME','MN','MT','NE','SC','SD',

@@ -1,6 +1,7 @@
 """Pure-logic job parsing + filtering. No network, no DB: easy to test."""
 import hashlib
 import re
+from datetime import datetime, timedelta, timezone
 
 STATES = {
  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT',
@@ -78,6 +79,19 @@ def fingerprint(company: str, title: str, location: str) -> str:
     return hashlib.sha1(key.encode()).hexdigest()
 
 
+def is_older_than(posted_at, days: int) -> bool:
+    """True only if we KNOW the posting date and it is older than `days`. Unknown date -> False."""
+    if not posted_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(posted_at).replace('Z', '+00:00'))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt < datetime.now(timezone.utc) - timedelta(days=days)
+
+
 def match_profiles(job: dict, profiles: list[dict]) -> list[int]:
     """Return ids of every active profile this job satisfies."""
     ids = []
@@ -85,6 +99,8 @@ def match_profiles(job: dict, profiles: list[dict]) -> list[int]:
         if not any(contains_phrase(job['title'], t) for t in p['titles']):
             continue
         if any(contains_phrase(job['title'], k) for k in p['exclude_keywords']):
+            continue
+        if p.get('max_age_days') and is_older_than(job.get('posted_at'), p['max_age_days']):
             continue
         if p['include_keywords']:
             blob = f"{job['title']} {job.get('description') or ''}"

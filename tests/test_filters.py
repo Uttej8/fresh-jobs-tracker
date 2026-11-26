@@ -117,3 +117,14 @@ def test_city_only_job_is_collected():
     assert not m('Software Engineer', 'Bengaluru, IN')
     assert m('Software Engineer', 'Remote - North America', include_unclear_location=True)
     assert not m('Software Engineer', 'Bengaluru, IN', include_unclear_location=True)
+
+
+def test_unlisted_countries_and_provinces_blocked():
+    for l in ['Remote - Estonia', 'Ontario', 'Remote - Latvia', 'Remote - Lithuania', 'Bulgaria', 'Remote - Peru',
+              'Quebec', 'British Columbia', 'Karnataka', 'Remote - Morocco']:
+        assert loc(l)[0] is None and loc(l)[3] is True, l
+    assert not m('Software Engineer', 'Remote - Estonia', include_unclear_location=True)
+    assert not m('Software Engineer', 'Ontario', include_unclear_location=True)
+    assert m('Software Engineer', 'San Juan, Puerto Rico', include_unclear_location=True)   # US territory still allowed
+    assert m('Software Engineer', 'Lebanon, NH')                                            # US town, unambiguous state
+    assert m('Software Engineer', 'Hybrid', include_unclear_location=True)

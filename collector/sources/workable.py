@@ -2,18 +2,16 @@
 This is the least-documented of the four sources, so it is the most likely to need a tweak."""
 import time
 
-from .base import clean_html, country_hint, get_json, make_session, norm_employment
+import salary as sal
+from .base import clean_html, country_hint, get_json, norm_employment
 
 API = 'https://apply.workable.com/api/v1/widget/accounts/{token}?details=true'
 
 
 class WorkableCollector:
-    def __init__(self):
-        self.session = make_session()
-
     def fetch(self, board_token: str, company_name: str) -> list[dict]:
-        data = get_json(self.session, API.format(token=board_token))
-        time.sleep(0.5)
+        data = get_json(None, API.format(token=board_token))
+        time.sleep(0.1)
         return self.parse(data, company_name)
 
     @staticmethod
@@ -26,12 +24,14 @@ class WorkableCollector:
             if not code:
                 continue
             location = ', '.join(x for x in (j.get('city'), j.get('state'), j.get('country')) if x)
+            desc = clean_html(j.get('description'))
             jobs.append({
+                'salary': sal.extract(desc), 'salary_checked': True,
                 'source_job_id': str(code),
                 'title': (j.get('title') or '').strip(),
                 'company': company_name,
                 'location': location,
-                'description': clean_html(j.get('description')),
+                'description': desc,
                 'application_url': j.get('url') or j.get('application_url') or '',
                 'posted_at': j.get('published_on'),  # created_at is deliberately NOT used as a posting date
                 'last_updated_at': None,

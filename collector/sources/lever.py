@@ -3,19 +3,17 @@
 import time
 from datetime import datetime, timezone
 
-from .base import MAX_DESC, country_hint, get_json, make_session, norm_employment
+import salary as sal
+from .base import MAX_DESC, country_hint, get_json, norm_employment
 
 API = 'https://api.lever.co/v0/postings/{token}?mode=json'
 WORKPLACE = {'remote': 'remote', 'hybrid': 'hybrid', 'on-site': 'onsite', 'onsite': 'onsite'}
 
 
 class LeverCollector:
-    def __init__(self):
-        self.session = make_session()
-
     def fetch(self, board_token: str, company_name: str) -> list[dict]:
-        data = get_json(self.session, API.format(token=board_token))
-        time.sleep(0.5)
+        data = get_json(None, API.format(token=board_token))
+        time.sleep(0.1)
         return self.parse(data, company_name)
 
     @staticmethod
@@ -28,12 +26,19 @@ class LeverCollector:
             created = j.get('createdAt')  # milliseconds since epoch = real posting creation time
             posted = (datetime.fromtimestamp(created / 1000, tz=timezone.utc).isoformat()
                       if isinstance(created, (int, float)) else None)
+            sr = j.get('salaryRange') or {}
+            text = ' '.join(filter(None, [j.get('descriptionPlain'), j.get('additionalPlain'),
+                                           j.get('salaryDescriptionPlain')]))
+            salary = (sal.structured(sr.get('min'), sr.get('max'), sr.get('currency'), sr.get('interval'))
+                      or sal.extract(text))
             jobs.append({
                 'source_job_id': str(j['id']),
                 'title': (j.get('text') or '').strip(),
                 'company': company_name,
                 'location': cat.get('location') or '',
                 'description': (j.get('descriptionPlain') or '')[:MAX_DESC],
+                'salary': salary,
+                'salary_checked': True,
                 'application_url': j.get('hostedUrl') or j.get('applyUrl') or '',
                 'posted_at': posted,
                 'last_updated_at': None,

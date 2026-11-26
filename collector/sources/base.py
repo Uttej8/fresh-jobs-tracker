@@ -1,6 +1,7 @@
 """Shared helpers for the source collectors."""
 import html
 import re
+import threading
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -17,8 +18,18 @@ def make_session():
     return s
 
 
+_local = threading.local()
+
+
+def get_session():
+    """One requests session per thread (sessions are not guaranteed thread-safe)."""
+    if not hasattr(_local, 's'):
+        _local.s = make_session()
+    return _local.s
+
+
 def get_json(session, url):
-    r = session.get(url, timeout=30)
+    r = (session or get_session()).get(url, timeout=(10, 25))
     r.raise_for_status()
     return r.json()
 

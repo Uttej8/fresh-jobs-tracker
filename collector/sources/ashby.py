@@ -1,19 +1,17 @@
 """Ashby public job board API: https://api.ashbyhq.com/posting-api/job-board/<board>"""
 import time
 
-from .base import MAX_DESC, country_hint, get_json, make_session, norm_employment
+import salary as sal
+from .base import MAX_DESC, country_hint, get_json, norm_employment
 
-API = 'https://api.ashbyhq.com/posting-api/job-board/{token}'
+API = 'https://api.ashbyhq.com/posting-api/job-board/{token}?includeCompensation=true'
 WORKPLACE = {'remote': 'remote', 'hybrid': 'hybrid', 'onsite': 'onsite', 'on-site': 'onsite'}
 
 
 class AshbyCollector:
-    def __init__(self):
-        self.session = make_session()
-
     def fetch(self, board_token: str, company_name: str) -> list[dict]:
-        data = get_json(self.session, API.format(token=board_token))
-        time.sleep(0.5)
+        data = get_json(None, API.format(token=board_token))
+        time.sleep(0.1)
         return self.parse(data, company_name)
 
     @staticmethod
@@ -29,6 +27,8 @@ class AshbyCollector:
             if not hint and j.get('isRemote'):
                 hint = 'remote'
             jobs.append({
+                'salary': AshbyCollector._salary(j),
+                'salary_checked': True,
                 'source_job_id': str(j['id']),
                 'title': (j.get('title') or '').strip(),
                 'company': company_name,
@@ -42,3 +42,16 @@ class AshbyCollector:
                 'employment_type': norm_employment(j.get('employmentType')),
             })
         return jobs
+
+    @staticmethod
+    def _salary(j):
+        comp = j.get('compensation') or {}
+        comps = comp.get('summaryComponents') or []
+        pick = next((c for c in comps if (c.get('compensationType') or '').lower() == 'salary'), None)
+        if pick:
+            out = sal.structured(pick.get('minValue'), pick.get('maxValue'), pick.get('currencyCode'), pick.get('interval'))
+            if out:
+                return out
+        text = ' '.join(filter(None, [comp.get('scrapeableCompensationSalarySummary'),
+                                      comp.get('compensationTierSummary'), j.get('descriptionPlain')]))
+        return sal.extract(text)

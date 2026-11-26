@@ -1,4 +1,4 @@
-# Fresh Jobs Tracker (Phase 3: freshness labels + dedupe)
+# Fresh Jobs Tracker (collector scaled for thousands of boards, salary column)
 
 **Purpose:** find fresh US software jobs to apply to during an India evening session
 (about 5:30 PM to 2 AM IST). Collection only runs in that window.
@@ -99,3 +99,24 @@ Max age is 21 days (`profiles.max_age_days`).
 Foreign cities and countries always block a job, so "Bengaluru, IN" is not Indiana and "Toronto, CA" is not California.
 The US city list lives in `collector/filters.py` (US_CITIES); add cities there if you see US jobs being missed.
 Check `recent_location_rejections` after a run to see which locations were dropped.
+
+## Scale + salary (Phase 5)
+- Boards run in parallel (per-vendor caps: Greenhouse 8, Ashby 6, Lever 4). Only the main thread touches the database.
+- Existing jobs are loaded once; unchanged jobs cause NO writes. Writes are bulk upserts.
+- `RUN_BUDGET_MINUTES` (workflow env, default 100) stops starting new boards; skipped boards are checked first next run.
+- Greenhouse is two-step: cheap job list for every board, then a per-job detail call (max 40 per board per run) only for
+  jobs that passed your filters and have not been salary-checked. Lever/Ashby return salary in the list.
+- Descriptions are NOT stored. They are read in memory to find a salary, then dropped.
+  Consequence: `profiles.include_keywords` only sees the title for Greenhouse jobs.
+- Dead boards: 3 consecutive 404/410 results, or 12 consecutive other errors, auto-disables the board
+  (`company_boards.disabled_reason`). Re-enable by setting `enabled = true` and `consecutive_failures = 0`.
+- `collection_runs` now has ONE summary row per run. Per-company status is on `company_boards`.
+- Housekeeping each run: closed jobs older than 30 days and run logs older than 14 days are deleted.
+- Salary: `latest_jobs.salary` shows the range or the words "Not listed". Source is `structured` (vendor field) or
+  `description` (an explicit range found in the posting text). Nothing is ever estimated.
+
+## Enabling companies in batches
+Companies imported from the directory are disabled and numbered `batch` 1..20 (500 each).
+    update company_boards set enabled = true where batch = 1;          -- first 500
+    update company_boards set enabled = true where batch <= 3;         -- first 1,500
+Check `board_overview` and the latest row of `collection_runs` (duration_s, boards_failed) after each step.

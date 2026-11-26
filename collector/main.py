@@ -207,7 +207,7 @@ def main() -> int:
         if force:
             for rows in (ok_rows, fail_rows, off_rows):
                 for c in chunks(rows, 500):
-                    db.table('company_boards').upsert(c, on_conflict='id').execute()
+                    db.table('company_boards').upsert(c, on_conflict='source_id,board_token').execute()
                 rows.clear()
 
     with ThreadPoolExecutor(WORKERS) as pool:
@@ -219,7 +219,7 @@ def main() -> int:
             if r['skipped']:
                 tot['skipped'] += 1
                 continue
-            base = {'id': b['id'], 'source_id': b['source_id'], 'board_token': b['board_token'],
+            base = {'source_id': b['source_id'], 'board_token': b['board_token'],     # no id: it is GENERATED ALWAYS
                     'company_name': b['company_name'], 'last_checked_at': now()}
             if r['error']:
                 tot['failed'] += 1
@@ -246,7 +246,12 @@ def main() -> int:
             ok_rows.append({**base, 'last_success_at': now(), 'last_error': None, 'consecutive_failures': 0,
                             'last_fetched_count': r['fetched'], 'last_matched_count': r['matched']})
             flush()
-    flush(force=True)
+    write_failed = False
+    try:
+        flush(force=True)
+    except Exception as e:                       # keep going so the run summary is still recorded
+        write_failed = True
+        log.error('final database write failed: %s', e)
 
     dur = round(time.monotonic() - t0, 1)
     summary = '; '.join(f'{k} x{v}' for k, v in errors.most_common(5)) or None
@@ -266,7 +271,7 @@ def main() -> int:
     log.info('DONE in %.0fs: ok=%d failed=%d skipped=%d disabled=%d | fetched=%d matched=%d new=%d updated=%d '
              'closed=%d details=%d | errors: %s', dur, tot['ok'], tot['failed'], tot['skipped'], tot['disabled'],
              tot['fetched'], tot['matched'], tot['inserted'], tot['updated'], tot['closed'], tot['details'], summary)
-    return 1 if boards and tot['ok'] == 0 and tot['failed'] else 0
+    return 1 if write_failed or (boards and tot['ok'] == 0 and tot['failed']) else 0
 
 
 if __name__ == '__main__':

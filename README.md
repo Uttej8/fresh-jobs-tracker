@@ -1,4 +1,4 @@
-# Fresh Jobs Tracker (Phase 1: foundation + Greenhouse collector)
+# Fresh Jobs Tracker (Phase 2: Greenhouse + Lever + Ashby + Workable)
 
 **Purpose:** find fresh US software jobs to apply to during an India evening session
 (about 5:30 PM to 2 AM IST). Collection only runs in that window.
@@ -57,9 +57,19 @@ Supabase -> Table Editor:
 - `company_boards`: add a company (source `greenhouse`, token = the part in boards.greenhouse.io/TOKEN).
 Changes apply on the next run.
 
-## Known limits (Phase 1)
-- Only Greenhouse. Lever, Ashby and Workable come in Phase 2.
-- Seed company tokens are unverified examples. Bad tokens show in `company_boards.last_error`.
+## Sources
+Greenhouse (verified live), Lever, Ashby, Workable (written from the public API docs, **verify on first run**).
+Open the `board_health` view to see which companies work and which show an error.
+Add a company: `company_boards` -> source_id (greenhouse / lever / ashby / workable) + board_token
+(the last part of its jobs URL, e.g. jobs.lever.co/**plaid**).
+Updating an existing database: run `supabase/migration_002_sources.sql` once.
+
+## Known limits
+- Seed company tokens are unverified examples. Bad tokens show in `board_health`.
+- Lever EU-hosted accounts (api.eu.lever.co) are not supported yet.
+- Workable's public endpoint is the least documented; expect it to be the first to need a tweak.
+- If a board returns 0 jobs while we hold active ones, the collector keeps them and flags an error
+  (assumed API glitch). Disable the board if the company really has no openings.
 - Workplace type is `unspecified` unless the text says remote or hybrid. It is not guessed.
 - Cross-source dedupe stores a `fingerprint`; the merge logic is Phase 3.
 - GitHub disables scheduled workflows on a repo with no activity for 60 days. If that happens,

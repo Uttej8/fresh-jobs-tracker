@@ -59,3 +59,15 @@ def test_workplace_and_level():
 
 def test_fingerprint_stable():
     assert fingerprint('Stripe', 'Software Engineer', 'Austin, TX') == fingerprint('stripe ', 'Software  Engineer', 'austin, tx')
+
+
+def test_max_age():
+    from datetime import datetime, timedelta, timezone
+    old = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+    new = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    j = job('Software Engineer', 'Austin, TX')
+    assert not match_profiles({**j, 'posted_at': old}, [{**P, 'max_age_days': 14}])
+    assert match_profiles({**j, 'posted_at': new}, [{**P, 'max_age_days': 14}])
+    assert match_profiles({**j, 'posted_at': None}, [{**P, 'max_age_days': 14}])   # unknown date kept
+    assert match_profiles({**j, 'posted_at': old}, [{**P, 'max_age_days': None}])  # no limit set
+    assert is_older_than('2019-11-14T22:28:57-05:00', 14)

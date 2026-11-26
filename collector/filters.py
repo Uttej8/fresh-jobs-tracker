@@ -113,6 +113,9 @@ def match_profiles(job: dict, profiles: list[dict]) -> list[int]:
         if p['workplace_types'] and job['workplace_type'] not in p['workplace_types'] \
                 and job['workplace_type'] != 'unspecified':
             continue
+        if p.get('employment_types') and job.get('employment_type', 'unspecified') not in p['employment_types'] \
+                and job.get('employment_type', 'unspecified') != 'unspecified':
+            continue
         if p['experience_levels'] and job['experience_level'] not in p['experience_levels'] \
                 and job['experience_level'] != 'unspecified':
             continue

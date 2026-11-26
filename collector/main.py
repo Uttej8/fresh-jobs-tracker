@@ -13,7 +13,7 @@ log = logging.getLogger('collector')
 now = lambda: datetime.now(timezone.utc).isoformat()  # noqa: E731
 
 ROW_KEYS = ('source_id', 'source_job_id', 'board_token', 'title', 'company', 'location', 'city', 'state',
-            'country', 'workplace_type', 'experience_level', 'description', 'application_url', 'posted_at',
+            'country', 'workplace_type', 'employment_type', 'experience_level', 'description', 'application_url', 'posted_at',
             'last_updated_at', 'fingerprint')
 
 
@@ -27,7 +27,14 @@ def load_profiles(db) -> list[dict]:
 
 def enrich(raw: dict, board_token: str, source_id: str) -> dict:
     loc = parse_location(raw['location'], raw['title'])
-    return {**raw, **loc, 'source_id': source_id, 'board_token': board_token,
+    if raw.get('workplace_hint'):            # structured data from the source beats text guessing
+        loc['workplace_type'] = raw['workplace_hint']
+    hint = raw.get('country_hint') or ''
+    if hint == 'US':
+        loc['country'], loc['foreign'] = 'US', False
+    elif hint:
+        loc['country'], loc['foreign'] = None, True
+    return {**raw, **loc, 'employment_type': raw.get('employment_type') or 'unspecified', 'source_id': source_id, 'board_token': board_token,
             'experience_level': infer_experience(raw['title']),
             'fingerprint': fingerprint(raw['company'], raw['title'], raw['location'])}
 
@@ -41,6 +48,9 @@ def run_board(db, board: dict, profiles: list[dict]):
         stats['fetched'] = len(raw_jobs)
         existing = {r['source_job_id']: r for r in db.table('jobs').select('source_job_id,status')
                     .eq('source_id', source_id).eq('board_token', token).execute().data}
+        if not raw_jobs and any(r['status'] == 'active' for r in existing.values()):
+            # An empty list while we hold active jobs is more likely an API glitch than every job closing.
+            raise RuntimeError('Board returned 0 jobs but we hold active ones; kept them (possible API glitch)')
         seen, new_rows, upd_rows = set(), [], []
         for raw in raw_jobs:
             job = enrich(raw, token, source_id)

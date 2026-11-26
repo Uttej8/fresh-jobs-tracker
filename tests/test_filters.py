@@ -71,3 +71,49 @@ def test_max_age():
     assert match_profiles({**j, 'posted_at': None}, [{**P, 'max_age_days': 14}])   # unknown date kept
     assert match_profiles({**j, 'posted_at': old}, [{**P, 'max_age_days': None}])  # no limit set
     assert is_older_than('2019-11-14T22:28:57-05:00', 14)
+
+
+def loc(l):
+    r = parse_location(l)
+    return r['country'], r['state'], r['confidence'], r['foreign']
+
+
+def test_city_only_and_state_forms():
+    assert loc('Seattle')[:3] == ('US', 'WA', 'city')
+    assert loc('San Francisco')[:3] == ('US', 'CA', 'city')
+    assert loc('San Francisco CA')[:2] == ('US', 'CA')          # no comma
+    assert loc('Washington, DC')[:2] == ('US', 'DC')
+    assert loc('New Mexico')[:2] == ('US', 'NM')
+    assert loc('Morgantown, West Virginia')[:2] == ('US', 'WV')  # not Virginia
+    assert loc('Atlanta, Georgia')[:2] == ('US', 'GA')
+    assert loc('Fishers, IN')[:3] == ('US', 'IN', 'state')       # Indiana, no foreign signal
+    assert loc('Paris, TX')[0] == 'US'                           # unambiguous code beats foreign-sounding city
+    assert loc('Portland')[:2] == ('US', None)                   # two possible states -> none claimed
+
+
+def test_foreign_not_mistaken_for_us():
+    for l in ['Bengaluru, IN', 'Toronto, CA', 'Berlin, DE', 'Tbilisi, Georgia', 'London, United Kingdom',
+              'Paris', 'San Jose, Costa Rica', 'Sao Paulo, SP', 'Zürich', 'Remote - Germany', 'Tel Aviv, IL']:
+        assert loc(l)[0] is None, l
+        assert loc(l)[3] is True, l
+
+
+def test_unclear_stays_unclear():
+    assert loc('Remote')[0] is None and loc('Remote')[3] is False
+    assert loc('Remote - North America')[0] is None and loc('Remote - North America')[3] is False
+
+
+def test_ignore_location_flag():
+    j = job('Software Engineer', 'London, United Kingdom')
+    assert not match_profiles(j, [P])
+    assert match_profiles(j, [P], ignore_location=True)
+    assert not match_profiles(job('Recruiter', 'London, United Kingdom'), [P], ignore_location=True)
+
+
+def test_city_only_job_is_collected():
+    assert m('Software Engineer', 'Seattle')
+    assert m('Software Engineer', 'Seattle', states=['WA'])
+    assert not m('Software Engineer', 'Seattle', states=['TX'])
+    assert not m('Software Engineer', 'Bengaluru, IN')
+    assert m('Software Engineer', 'Remote - North America', include_unclear_location=True)
+    assert not m('Software Engineer', 'Bengaluru, IN', include_unclear_location=True)

@@ -1,6 +1,7 @@
 """Pure-logic job parsing + filtering. No network, no DB: easy to test."""
 import hashlib
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 STATES = {
@@ -13,9 +14,45 @@ STATES = {
  'tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV',
  'wisconsin':'WI','wyoming':'WY','district of columbia':'DC'}
 ABBRS = set(STATES.values())
-FOREIGN = ['canada','india','united kingdom','uk','germany','france','ireland','australia','singapore','japan',
- 'brazil','mexico','poland','spain','netherlands','israel','emea','apac','latam','london','toronto','bangalore',
- 'berlin','dublin','sydney','tokyo']
+# Foreign countries/regions AND major foreign tech-hub cities (checked on accent-folded text)
+FOREIGN = ['canada','india','united kingdom','uk','england','scotland','germany','france','ireland','australia',
+ 'new zealand','singapore','japan','china','hong kong','taiwan','south korea','korea','brazil','mexico','argentina',
+ 'colombia','chile','costa rica','poland','spain','portugal','netherlands','belgium','sweden','norway','denmark',
+ 'finland','switzerland','austria','italy','czech republic','romania','serbia','ukraine','hungary','greece',
+ 'turkey','israel','egypt','nigeria','kenya','south africa','uae','dubai','saudi arabia','philippines','indonesia',
+ 'malaysia','vietnam','thailand','pakistan','bangladesh','sri lanka','georgia country','emea','apac','latam','europe',
+ 'asia','bangalore','bengaluru','hyderabad','pune','mumbai','delhi','gurgaon','gurugram','noida','chennai','kolkata',
+ 'toronto','montreal','ottawa','calgary','waterloo','vancouver bc','london','dublin','berlin','munich','paris',
+ 'amsterdam','warsaw','krakow','madrid','barcelona','lisbon','stockholm','copenhagen','oslo','helsinki','zurich',
+ 'tel aviv','tokyo','sydney','melbourne','sao paulo','buenos aires','mexico city','bogota','lagos','nairobi',
+ 'cape town','manila','jakarta','kuala lumpur','seoul','taipei','shanghai','beijing','shenzhen','bucharest',
+ 'belgrade','kyiv','prague','budapest','vienna','milan','rome','istanbul','cairo','tbilisi','yerevan','riga','tallinn']
+
+# State codes that are ALSO country codes (CA Canada, IN India, DE Germany...). A bare ", IN" proves nothing,
+# so these only count as US when no foreign signal is present.
+AMBIG_CODES = {'CA','IN','DE','IL','CO','MA','ID','GA','AL','PA','AR','AZ','LA','MD','ME','MN','MT','NE','SC','SD',
+               'TN','VA'}
+# Codes that are ordinary words, so they never count without a preceding comma
+BARE_BLOCK = {'OR','IN','ME','OK','HI','AS','LA','ID'}
+
+# Unambiguous US cities: positive evidence when a posting gives only a city. Value = state (None if two states).
+US_CITIES = {
+ 'new york city':'NY','new york':'NY','nyc':'NY','brooklyn':'NY','manhattan':'NY','long island city':'NY',
+ 'san francisco':'CA','south san francisco':'CA','oakland':'CA','berkeley':'CA','san jose':'CA','palo alto':'CA',
+ 'mountain view':'CA','sunnyvale':'CA','santa clara':'CA','menlo park':'CA','redwood city':'CA','cupertino':'CA',
+ 'fremont':'CA','san mateo':'CA','foster city':'CA','emeryville':'CA','santa cruz':'CA','los angeles':'CA',
+ 'santa monica':'CA','culver city':'CA','el segundo':'CA','pasadena':'CA','irvine':'CA','san diego':'CA',
+ 'sacramento':'CA','bay area':'CA','silicon valley':'CA','seattle':'WA','bellevue':'WA','redmond':'WA',
+ 'kirkland':'WA','austin':'TX','dallas':'TX','houston':'TX','san antonio':'TX','plano':'TX','irving':'TX',
+ 'frisco':'TX','boston':'MA','somerville':'MA','waltham':'MA','chicago':'IL','denver':'CO','boulder':'CO',
+ 'atlanta':'GA','miami':'FL','orlando':'FL','tampa':'FL','phoenix':'AZ','scottsdale':'AZ','tempe':'AZ',
+ 'tucson':'AZ','las vegas':'NV','salt lake city':'UT','lehi':'UT','provo':'UT','minneapolis':'MN','detroit':'MI',
+ 'ann arbor':'MI','columbus':'OH','cleveland':'OH','cincinnati':'OH','pittsburgh':'PA','philadelphia':'PA',
+ 'baltimore':'MD','washington dc':'DC','reston':'VA','mclean':'VA','raleigh':'NC','durham':'NC','charlotte':'NC',
+ 'nashville':'TN','st louis':'MO','saint louis':'MO','indianapolis':'IN','milwaukee':'WI','madison':'WI',
+ 'omaha':'NE','boise':'ID','albuquerque':'NM','honolulu':'HI','anchorage':'AK','new orleans':'LA',
+ 'jersey city':'NJ','hoboken':'NJ','princeton':'NJ','stamford':'CT','white plains':'NY',
+ 'portland':None,'arlington':None,'kansas city':None}
 SYNONYMS = [('front end','frontend'),('back end','backend'),('full stack','fullstack'),
             ('software development engineer','sde'),('software dev engineer','sde')]
 
@@ -33,9 +70,16 @@ def contains_phrase(text: str, phrase: str) -> bool:
     return bool(p) and f' {p} ' in norm(text)
 
 
+def _fold(text: str) -> str:
+    """Remove accents (Sao Paulo, Zurich...) so matching is reliable."""
+    return ''.join(c for c in unicodedata.normalize('NFKD', text or '') if not unicodedata.combining(c))
+
+
 def parse_location(loc: str, title: str = ''):
-    """Returns dict(city, state, country, workplace_type, foreign). country is 'US' or None (unclear/foreign)."""
-    loc = loc or ''
+    """Returns dict(city, state, country, workplace_type, foreign, confidence).
+    country is 'US' or None. confidence: explicit (US word / unambiguous state), state (ambiguous code with no
+    foreign signal), city (known US city), unclear. `foreign` = a foreign country/city was seen."""
+    loc = _fold(loc or '')
     low = loc.lower()
     both = f'{low} {title.lower()}'
     workplace = 'unspecified'
@@ -44,21 +88,37 @@ def parse_location(loc: str, title: str = ''):
     elif 'remote' in both:
         workplace = 'remote'
 
-    state = None
+    t = ' ' + re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9 ]+', ' ', low)) + ' '
+    foreign = any(f' {f} ' in t.replace(' new mexico ', ' ') for f in FOREIGN)
+
+    state, ambiguous = None, False
     m = re.search(r',\s*([A-Z]{2})\b', loc)
     if m and m.group(1) in ABBRS:
-        state = m.group(1)
-    else:
-        for name, ab in STATES.items():
-            if re.search(rf'\b{name}\b', low):
-                state = ab
+        state, ambiguous = m.group(1), m.group(1) in AMBIG_CODES
+    if not state:
+        m = re.search(r'\s([A-Z]{2})$', loc.strip())          # "Austin TX" with no comma
+        if m and m.group(1) in ABBRS and m.group(1) not in BARE_BLOCK:
+            state, ambiguous = m.group(1), m.group(1) in AMBIG_CODES
+    if not state:
+        for name in sorted(STATES, key=len, reverse=True):       # longest first: 'west virginia' before 'virginia'
+            if f' {name} ' in t:
+                state, ambiguous = STATES[name], name == 'georgia'
                 break
-    us_word = bool(re.search(r'\b(united states|usa|u\.s\.?|us)\b', low)) or 'america' in low
-    foreign = any(re.search(rf'\b{re.escape(f)}\b', low) for f in FOREIGN)
-    country = 'US' if (state or us_word) and not (foreign and not state) else None
+    city_state = next((st for c, st in sorted(US_CITIES.items(), key=lambda x: -len(x[0])) if f' {c} ' in t), False)
+
+    us_word = bool(re.search(r'(?<![a-z])(united states(?: of america)?|usa|u\.s\.?|us)(?![a-z])', low))
+    if us_word or (state and not ambiguous):
+        country, conf = 'US', 'explicit'
+    elif state and not foreign:
+        country, conf = 'US', 'state'
+    elif city_state is not False and not foreign:
+        country, conf = 'US', 'city'
+        state = state or city_state
+    else:
+        country, conf = None, 'unclear'
     city = loc.split(',')[0].strip() if state and ',' in loc else None
-    return {'city': city, 'state': state, 'country': country, 'workplace_type': workplace,
-            'foreign': foreign}
+    return {'city': city, 'state': state if country else None, 'country': country, 'workplace_type': workplace,
+            'foreign': foreign and country != 'US', 'confidence': conf}
 
 
 def infer_experience(title: str) -> str:
@@ -92,7 +152,7 @@ def is_older_than(posted_at, days: int) -> bool:
     return dt < datetime.now(timezone.utc) - timedelta(days=days)
 
 
-def match_profiles(job: dict, profiles: list[dict]) -> list[int]:
+def match_profiles(job: dict, profiles: list[dict], ignore_location: bool = False) -> list[int]:
     """Return ids of every active profile this job satisfies."""
     ids = []
     for p in profiles:
@@ -106,10 +166,11 @@ def match_profiles(job: dict, profiles: list[dict]) -> list[int]:
             blob = f"{job['title']} {job.get('description') or ''}"
             if not any(contains_phrase(blob, k) for k in p['include_keywords']):
                 continue
-        if job['country'] != 'US' and not (p['include_unclear_location'] and not job['foreign']):
-            continue
-        if p['states'] and job['state'] not in p['states'] and job['workplace_type'] != 'remote':
-            continue
+        if not ignore_location:
+            if job['country'] != 'US' and not (p['include_unclear_location'] and not job['foreign']):
+                continue
+            if p['states'] and job['state'] not in p['states'] and job['workplace_type'] != 'remote':
+                continue
         if p['workplace_types'] and job['workplace_type'] not in p['workplace_types'] \
                 and job['workplace_type'] != 'unspecified':
             continue

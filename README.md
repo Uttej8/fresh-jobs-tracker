@@ -1,4 +1,4 @@
-# Fresh Jobs Tracker (Phase 2: Greenhouse + Lever + Ashby + Workable)
+# Fresh Jobs Tracker (Phase 3: freshness labels + dedupe)
 
 **Purpose:** find fresh US software jobs to apply to during an India evening session
 (about 5:30 PM to 2 AM IST). Collection only runs in that window.
@@ -76,3 +76,26 @@ Updating an existing database: run `supabase/migration_002_sources.sql` once.
   re-enable it in the Actions tab or push any small commit.
 - Free Supabase pauses projects after about 1 week with no activity. Daily runs prevent this.
 - GitHub Actions is free for public repos. Private repos get 2,000 min/month; this uses roughly 300.
+
+## Phase 3: reading `latest_jobs`
+Open the `latest_jobs` view (all active jobs, newly detected first). Columns:
+- `freshness`: last_3h / last_24h / last_3d / last_7d / older.
+- `freshness_label`: "Posted 2h ago" when the source gave a real posting date, otherwise "First seen 2h ago".
+  "First seen" only means when WE first noticed it, so it can overstate freshness for jobs that were
+  already open when tracking began.
+- `new_this_session`: true if first detected after your last session ended (2:00 AM IST).
+- `possible_repost`: an older, now-closed copy with the same company, title and location exists.
+  It may be the same role re-listed to look new.
+- Duplicates: the same company+title+location found on two different sources is shown once.
+  Identical postings on the SAME source are kept, because they can be separate openings.
+Max age is 21 days (`profiles.max_age_days`).
+
+## Location detection (Phase 3.5)
+`location_confidence` in `latest_jobs` tells you how a job was judged to be in the US:
+- `explicit`: says US/USA/United States, or has an unambiguous state (TX, NY, "Texas"...).
+- `state`: has a code that is also a country code (CA, IN, DE...) and nothing foreign appears with it.
+- `city`: only a known US city was given ("Seattle"); the state is filled in from the city.
+- `unclear`: no location evidence, e.g. a bare "Remote". Only kept if `profiles.include_unclear_location = true`.
+Foreign cities and countries always block a job, so "Bengaluru, IN" is not Indiana and "Toronto, CA" is not California.
+The US city list lives in `collector/filters.py` (US_CITIES); add cities there if you see US jobs being missed.
+Check `recent_location_rejections` after a run to see which locations were dropped.

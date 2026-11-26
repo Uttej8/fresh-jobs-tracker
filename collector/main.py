@@ -13,7 +13,7 @@ log = logging.getLogger('collector')
 now = lambda: datetime.now(timezone.utc).isoformat()  # noqa: E731
 
 ROW_KEYS = ('source_id', 'source_job_id', 'board_token', 'title', 'company', 'location', 'city', 'state',
-            'country', 'workplace_type', 'employment_type', 'experience_level', 'description', 'application_url', 'posted_at',
+            'country', 'location_confidence', 'workplace_type', 'employment_type', 'experience_level', 'description', 'application_url', 'posted_at',
             'last_updated_at', 'fingerprint')
 
 
@@ -27,11 +27,12 @@ def load_profiles(db) -> list[dict]:
 
 def enrich(raw: dict, board_token: str, source_id: str) -> dict:
     loc = parse_location(raw['location'], raw['title'])
+    loc['location_confidence'] = loc.pop('confidence')
     if raw.get('workplace_hint'):            # structured data from the source beats text guessing
         loc['workplace_type'] = raw['workplace_hint']
     hint = raw.get('country_hint') or ''
     if hint == 'US':
-        loc['country'], loc['foreign'] = 'US', False
+        loc['country'], loc['foreign'], loc['location_confidence'] = 'US', False, 'explicit'
     elif hint:
         loc['country'], loc['foreign'] = None, True
     return {**raw, **loc, 'employment_type': raw.get('employment_type') or 'unspecified', 'source_id': source_id, 'board_token': board_token,
@@ -42,7 +43,9 @@ def enrich(raw: dict, board_token: str, source_id: str) -> dict:
 def run_board(db, board: dict, profiles: list[dict]):
     source_id, token = board['source_id'], board['board_token']
     run = db.table('collection_runs').insert({'source_id': source_id, 'board_token': token}).execute().data[0]
-    stats = dict(fetched=0, matched=0, inserted=0, updated=0, closed=0, error=None)
+    stats = dict(fetched=0, matched=0, inserted=0, updated=0, closed=0, error=None,
+                 rejected_location=0, rejected_samples=[])
+    rejected = []
     try:
         raw_jobs = COLLECTORS[source_id].fetch(token, board['company_name'])
         stats['fetched'] = len(raw_jobs)
@@ -56,12 +59,16 @@ def run_board(db, board: dict, profiles: list[dict]):
             job = enrich(raw, token, source_id)
             ids = match_profiles(job, profiles)
             if not ids:
+                if match_profiles(job, profiles, ignore_location=True):   # would match, but location said no
+                    rejected.append(job['location'] or '(blank)')
                 continue
             seen.add(job['source_job_id'])
             row = {k: job[k] for k in ROW_KEYS}
             row.update(profile_ids=ids, last_verified_at=now(), status='active', closed_at=None)
             (upd_rows if job['source_job_id'] in existing else new_rows).append(row)
         stats['matched'] = len(seen)
+        stats['rejected_location'] = len(rejected)
+        stats['rejected_samples'] = sorted(set(rejected))[:12]
         if new_rows:
             db.table('jobs').insert(new_rows).execute()
         if upd_rows:  # first_detected_at is deliberately absent so it is never overwritten

@@ -224,7 +224,8 @@ def main() -> int:
             if r['error']:
                 tot['failed'] += 1
                 errors[r['error'].split(':')[0] + (f" {r['status']}" if r['status'] else '')] += 1
-                fails = (b.get('consecutive_failures') or 0) + 1
+                # 429 = "slow down", not "dead": it must never count toward auto-disable
+                fails = (b.get('consecutive_failures') or 0) + (0 if r['status'] == 429 else 1)
                 limit = MAX_GONE_FAILS if r['status'] in (404, 410) else MAX_OTHER_FAILS
                 row = {**base, 'last_error': r['error'], 'consecutive_failures': fails}
                 if fails >= limit:

@@ -111,7 +111,8 @@ Check `recent_location_rejections` after a run to see which locations were dropp
 - Dead boards: 3 consecutive 404/410 results, or 12 consecutive other errors, auto-disables the board
   (`company_boards.disabled_reason`). Re-enable by setting `enabled = true` and `consecutive_failures = 0`.
 - `collection_runs` now has ONE summary row per run. Per-company status is on `company_boards`.
-- Housekeeping each run: closed jobs older than 30 days and run logs older than 14 days are deleted.
+- Nothing is deleted automatically. Use `supabase/maintenance.sql` by hand. (Set env `HOUSEKEEPING: 'on'` in the workflow
+  if you ever want the old automatic cleanup of closed jobs >30 days and run logs >14 days.)
 - Salary: `latest_jobs.salary` shows the range or the words "Not listed". Source is `structured` (vendor field) or
   `description` (an explicit range found in the posting text). Nothing is ever estimated.
 
@@ -120,3 +121,9 @@ Companies imported from the directory are disabled and numbered `batch` 1..20 (5
     update company_boards set enabled = true where batch = 1;          -- first 500
     update company_boards set enabled = true where batch <= 3;         -- first 1,500
 Check `board_overview` and the latest row of `collection_runs` (duration_s, boards_failed) after each step.
+
+## Schedule, times, industry
+- Workflow runs hourly 5:40 PM to 12:40 AM IST, Monday to Friday (cron `10 12-19 * * 1-5`, UTC).
+- Supabase stores times in UTC. The views `latest_jobs`, `board_health`, `recent_runs` add IST text columns
+  (`posted_ist`, `first_seen_ist`, `last_checked_ist`, `started_ist`).
+- `company_boards.industry` is filled manually (the vendors do not provide it). `latest_jobs.industry` shows 'Unknown' until set.

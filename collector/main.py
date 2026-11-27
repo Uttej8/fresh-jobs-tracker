@@ -261,13 +261,14 @@ def main() -> int:
         'error': summary, 'rejected_location': tot['rejected'], 'rejected_samples': sorted(rejected)[:12],
         'boards_ok': tot['ok'], 'boards_failed': tot['failed'], 'boards_skipped': tot['skipped'],
         'boards_disabled': tot['disabled'], 'detail_fetches': tot['details'], 'duration_s': dur}).execute()
-    try:   # housekeeping keeps the free database small
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        db.table('jobs').delete().eq('status', 'closed').lt('closed_at', cutoff).execute()
-        db.table('collection_runs').delete().lt('started_at',
-                                                (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()).execute()
-    except Exception as e:
-        log.warning('housekeeping failed: %s', e)
+    if os.environ.get('HOUSEKEEPING', 'off').lower() == 'on':     # automatic deletion is OFF by default
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            db.table('jobs').delete().eq('status', 'closed').lt('closed_at', cutoff).execute()
+            db.table('collection_runs').delete().lt(
+                'started_at', (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()).execute()
+        except Exception as e:
+            log.warning('housekeeping failed: %s', e)
     log.info('DONE in %.0fs: ok=%d failed=%d skipped=%d disabled=%d | fetched=%d matched=%d new=%d updated=%d '
              'closed=%d details=%d | errors: %s', dur, tot['ok'], tot['failed'], tot['skipped'], tot['disabled'],
              tot['fetched'], tot['matched'], tot['inserted'], tot['updated'], tot['closed'], tot['details'], summary)

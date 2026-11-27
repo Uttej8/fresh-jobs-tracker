@@ -12,7 +12,8 @@ MAX_DESC = 15000  # keep the free 500MB database small
 
 def make_session():
     s = requests.Session()
-    retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504],
+                  raise_on_status=False)   # after retries, surface the real status (e.g. 429) instead of RetryError
     s.mount('https://', HTTPAdapter(max_retries=retry))
     s.headers['User-Agent'] = 'FreshJobsTracker/0.2 (personal job board; polite polling)'
     return s

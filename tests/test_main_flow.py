@@ -31,6 +31,8 @@ class Q:
             rows = self.payload if isinstance(self.payload, list) else [self.payload]
             out = []
             for r in rows:
+                if 'id' in r and self.name in ('company_boards', 'jobs', 'collection_runs'):
+                    raise AssertionError(f'id is GENERATED ALWAYS on {self.name}: cannot insert/upsert an id')
                 keys = (self.conf or '').split(',') if self.mode == 'upsert' else []
                 hit = next((x for x in t if keys and all(x.get(k) == r.get(k) for k in keys)), None)
                 if hit: hit.update(r); out.append(hit)
@@ -94,3 +96,20 @@ def test_main_end_to_end():
     main.COLLECTORS['fake'] = type('Gone', (), {'fetch': lambda s, tok, n: [dict(FakeVendor().fetch('x', 'G')[0], source_job_id='other', title='Software Engineer')] if tok == 'good' else []})()
     main.main()
     assert any(j['status'] == 'closed' for j in t['jobs'])                                # vanished job gets closed
+
+
+def test_housekeeping_is_opt_in():
+    old = {'id': 900, 'source_id': 'fake', 'source_job_id': 'zz', 'board_token': 'gone', 'status': 'closed',
+           'closed_at': '2020-01-01T00:00:00+00:00'}
+    for flag, expect_left in (('off', 1), ('on', 0)):
+        t_ = {'sources': [{'id': 'fake', 'enabled': True}], 'company_boards': [], 'jobs': [dict(old)],
+              'profiles': [{'id': 1, 'active': True, 'exclude_keywords': [], 'include_keywords': [], 'states': [],
+                            'workplace_types': [], 'experience_levels': [], 'employment_types': [],
+                            'include_unclear_location': False, 'max_age_days': 21}],
+              'profile_titles': [{'profile_id': 1, 'title': 'Software Engineer', 'enabled': True}], 'collection_runs': []}
+        db = DB(t_)
+        sys.modules['supabase'] = types.SimpleNamespace(create_client=lambda u, k: db)
+        os.environ.update(SUPABASE_URL='x', SUPABASE_SERVICE_KEY='y', HOUSEKEEPING=flag)
+        main.main()
+        assert len([j for j in t_['jobs'] if j['status'] == 'closed']) == expect_left, flag
+    os.environ.pop('HOUSEKEEPING', None)

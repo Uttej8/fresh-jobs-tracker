@@ -2,14 +2,16 @@ name: Collect jobs
 on:
   schedule:
     # GitHub cron uses UTC. India (IST) = UTC + 5:30.
-    # 11:35, 13:35, 15:35, 17:35, 19:35 UTC -> 5:05, 7:05, 9:05, 11:05 PM and 1:05 AM IST (every 2 hours).
-    - cron: '35 11,13,15,17,19 * * *'
+    # Hourly at :10 from 12:10 to 19:10 UTC, Monday-Friday
+    #   = 5:40 PM, 6:40, 7:40, 8:40, 9:40, 10:40, 11:40 PM and 12:40 AM IST (8 runs per working evening).
+    # Every run of a Monday-evening session falls on Monday in UTC, so '1-5' matches your Mon-Fri evenings.
+    - cron: '10 12-19 * * 1-5'
   workflow_dispatch: {}       # "Run workflow" button for manual runs at any time
 concurrency: collect
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,4 +24,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          RUN_BUDGET_MINUTES: '100'   # stop starting new boards after this; the rest go first next run
+          RUN_BUDGET_MINUTES: '30'   # stop starting new boards after this; the rest go first next run

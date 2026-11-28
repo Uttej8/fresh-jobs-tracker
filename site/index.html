@@ -30,10 +30,11 @@ a.apply{background:var(--ac);color:#fff;text-decoration:none;text-align:center;b
 .day{min-width:74px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px}.day.on{background:var(--ac);border-color:var(--ac);color:#fff}.day span{font-size:18px;font-weight:700}
 .ve{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--bd)}.ve:first-child{border:0}.ve a{color:var(--ac);word-break:break-all;font-size:13px}.ve select{padding:5px 8px;font-size:13px}
 @media(max-width:640px){header{position:static}.job{flex-direction:column}.ja{min-width:0}main{padding-top:10px}}
-</style></head><body>
-<header><div class="top"><h1>Find Job <span id="cnt" class="pill"></span><small id="upd"></small></h1>
+#tz{padding:3px 10px;font-size:12px;border-radius:99px}</style></head><body>
+<header><div class="top"><h1>Find Job <span id="cnt" class="pill"></span><small id="upd"></small><select id="tz" title="Time zone"></select></h1>
 <div class="tools"><nav class="tabs"><button data-v="jobs" class="on">Jobs</button><button data-v="vault">Applied <span id="vc"></span></button></nav><button id="th" title="Light / dark"></button></div></div>
 <div id="fl"><div class="row"><input id="q" type="search" placeholder="Search company, title, location">
+<select id="pf"><option value="">All profiles</option></select>
 <select id="fr"><option value="4">Any age</option><option value="0">Last 3 hours</option><option value="1">Last 24 hours</option><option value="2">Last 3 days</option><option value="3">Last 7 days</option></select>
 <select id="sl"><option value="">Any salary</option><option value="listed">Salary listed</option><option value="100000">$100k+ / year</option><option value="150000">$150k+ / year</option><option value="200000">$200k+ / year</option></select>
 <select id="wp"><option value="">All workplaces</option><option>remote</option><option>hybrid</option><option>onsite</option><option>unspecified</option></select>
@@ -46,17 +47,26 @@ a.apply{background:var(--ac);color:#fff;text-decoration:none;text-align:center;b
 
 const CFG={url:'https://xjqfmfbshfdaxjrrffuh.supabase.co',key:'sb_publishable_WSygjuohJadasaSH-QdRrA__j1MzzO7'};
 // ==================================
-let COLS='company,title,location,workplace_type,freshness,freshness_label,new_this_session,possible_repost,application_url,source_id,location_confidence,salary,salary_max,salary_period,industry,posted_ist,first_seen_ist,posted_at,profile_names';
+let COLS='company,title,location,workplace_type,freshness,freshness_label,new_this_session,possible_repost,application_url,source_id,location_confidence,salary,salary_max,salary_period,industry,posted_at,first_detected_at,profile_names';
 const $=id=>document.getElementById(id),RANK={last_3h:0,last_24h:1,last_3d:2,last_7d:3,older:4};
 const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const ic=p=>`<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px">${p}</svg>`;
 const SUN=ic('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),MOON=ic('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),EYE=ic('<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6 0 9.500 6 9.500 6a17 17 0 0 1-3.200 3.900M6.600 6.700A17 17 0 0 0 2.500 12S6 18 12 18c1.500 0 2.800-.4 4-.9"/>');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ist=(d=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(d);
-const tm=iso=>new Date(iso).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})+' IST';
+const tmIST=iso=>new Date(iso).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})+' IST';
+const TZ={IST:['Asia/Kolkata','India · IST'],ET:['America/New_York','Eastern · ET'],CT:['America/Chicago','Central · CT'],MT:['America/Denver','Mountain · MT'],PT:['America/Los_Angeles','Pacific · PT']};
+let tzk=ld('fjt_tz','IST');if(!TZ[tzk])tzk='IST';
+const dateOnly=iso=>/T00:00:00(\.0+)?(Z|\+00:00)$/.test(iso);   // some vendors give a date with no time
+function fmt(iso,timeOnly){if(!iso)return '';
+  if(!timeOnly&&dateOnly(iso))return new Date(iso).toLocaleDateString('en-GB',{timeZone:'UTC',day:'2-digit',month:'short',year:'numeric'});
+  const o={timeZone:TZ[tzk][0],hour:'2-digit',minute:'2-digit',hour12:true,timeZoneName:'short'};if(!timeOnly){o.day='2-digit';o.month='short';o.year='numeric'}
+  const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',o).formatToParts(new Date(iso)).map(x=>[x.type,x.value]));
+  const t=`${p.hour}:${p.minute} ${p.dayPeriod} ${tzk==='IST'?'IST':p.timeZoneName}`;return timeOnly?t:`${p.day} ${p.month} ${p.year}, ${t}`}
+const tm=iso=>fmt(iso,true),setUpd=()=>{$('upd').textContent=lastUpd?'updated '+fmt(lastUpd.toISOString()):''};
 const addDays=(d,n)=>new Date(Date.parse(d+'T12:00:00Z')+n*864e5).toISOString().slice(0,10);
 const wd=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',timeZone:'UTC'});
-let jobs=[],by={},AP=new Map(),st=ld('fjt_v1',{applied:{},hidden:{}}),P=ld('fjt_pend',[]),shown=100,view='jobs',away=false,vf='',vd=ist(),xs=vd,xe=vd,xf='';
+let jobs=[],lastUpd=null,by={},AP=new Map(),st=ld('fjt_v1',{applied:{},hidden:{}}),P=ld('fjt_pend',[]),shown=100,view='jobs',away=false,vf='',vd=ist(),xs=vd,xe=vd,xf='';
 let V=ld('fjt_vault',{entries:[]});
 const saveAll=()=>{sv('fjt_v1',st);sv('fjt_vault',V);sv('fjt_pend',P)};
 const folders=()=>[...new Set([...V.entries.map(e=>e.folder),...jobs.flatMap(j=>(j.profile_names||'').split(', ').filter(Boolean))])].sort();
@@ -73,15 +83,16 @@ async function load(){
     const opt=(el,l,v)=>{const c=el.value;el.innerHTML=`<option value="">${l}</option>`+v.map(x=>`<option${x===c?' selected':''}>${esc(x)}</option>`).join('')};
     opt($('src'),'All sources',[...new Set(jobs.map(j=>j.source_id))].sort());
     opt($('ind'),'All industries',[...new Set(jobs.map(j=>j.industry).filter(x=>x&&x!=='Unknown'))].sort());
-    $('upd').textContent='updated '+new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true})+' IST';
+    opt($('pf'),'All profiles',[...new Set(jobs.flatMap(j=>(j.profile_names||'').split(', ').filter(Boolean)))].sort());if(!$('pf').value)$('pf').value=ld('fjt_pf','')||'';
+    lastUpd=new Date();setUpd();
     render()}catch(e){$('msg').textContent='Could not load jobs: '+e.message}
 }
 function filtered(){
-  const q=$('q').value.toLowerCase(),fr=+$('fr').value,wp=$('wp').value,src=$('src').value,ind=$('ind').value,sl=$('sl').value;
+  const q=$('q').value.toLowerCase(),fr=+$('fr').value,wp=$('wp').value,src=$('src').value,ind=$('ind').value,sl=$('sl').value,pf=$('pf').value;
   let f=jobs.filter(j=>{const k=j.application_url;
     if(!$('sa').checked&&AP.has(k))return false;if(!$('sh').checked&&st.hidden[k])return false;
     if(!$('un').checked&&j.location_confidence==='unclear')return false;if($('nw').checked&&!j.new_this_session)return false;
-    if((RANK[j.freshness]??4)>fr)return false;if(wp&&j.workplace_type!==wp)return false;if(src&&j.source_id!==src)return false;if(ind&&j.industry!==ind)return false;
+    if((RANK[j.freshness]??4)>fr)return false;if(wp&&j.workplace_type!==wp)return false;if(src&&j.source_id!==src)return false;if(ind&&j.industry!==ind)return false;if(pf&&!(j.profile_names||'').split(', ').includes(pf))return false;
     if(sl==='listed'&&j.salary==='Not listed')return false;if(sl&&sl!=='listed'&&!(j.salary_period==='year'&&+j.salary_max>=+sl))return false;
     return !q||`${j.company} ${j.title} ${j.location}`.toLowerCase().includes(q)});
   const s=$('so').value,g=j=>j.salary_period==='year'?0:(j.salary&&j.salary!=='Not listed'?1:2);
@@ -94,7 +105,7 @@ function card(j){const u=j.application_url,k=encodeURIComponent(u),ap=AP.get(u),
   <span class="b ${RANK[j.freshness]<=1?'hot':''}">${esc(j.freshness_label)}</span>${j.new_this_session?'<span class="b hot">NEW</span>':''}<span class="b">${esc(j.workplace_type)}</span>
   ${j.industry&&j.industry!=='Unknown'?`<span class="b">${esc(j.industry)}</span>`:''}<span class="b ${listed?'hot':'mu'}">${listed?esc(j.salary):'Salary not listed'}</span>
   ${j.location_confidence==='unclear'?'<span class="b warn">location unclear</span>':''}${j.possible_repost?'<span class="b warn">possible repost</span>':''}${ap?`<span class="b hot">✓ Applied · ${esc(ap.folder)}</span>`:''}
-  <p class="m s">${esc(j.posted_ist?'Posted '+j.posted_ist:'First seen '+(j.first_seen_ist||''))}</p></div>
+  <p class="m s">${esc(j.posted_at?'Posted '+fmt(j.posted_at):'First seen '+fmt(j.first_detected_at))}</p></div>
   <div class="ja"><a class="apply" data-k="${k}" href="${esc(u)}" target="_blank" rel="noopener noreferrer">Apply</a><div class="r2">
   <button data-a="${ap?'undo':'mark'}" data-k="${k}">${ap?'Undo applied':'Mark applied'}</button><button data-a="hide" data-k="${k}">${st.hidden[u]?'Unhide':'Hide '+EYE}</button></div></div></article>`}
 function render(){
@@ -130,7 +141,7 @@ function vault(){
   <p class="m s">Dates use IST. Applied jobs are saved in this browser, so export a backup now and then.</p></div>`}
 function exportCSV(){const r=xr();if(!r.length){toast('Nothing to export for that range');return}
   const q=v=>{v=String(v??'');if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'};
-  const rows=[['Date','Time (IST)','Profile','Company','Title','Location','Salary','Source','Link'],...r.map(e=>[e.day,tm(e.at),e.folder,e.company,e.title,e.location,e.salary&&e.salary!=='Not listed'?e.salary:'',e.source,e.url])];
+  const rows=[['Date','Time (IST)','Profile','Company','Title','Location','Salary','Source','Link'],...r.map(e=>[e.day,tmIST(e.at),e.folder,e.company,e.title,e.location,e.salary&&e.salary!=='Not listed'?e.salary:'',e.source,e.url])];
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(x=>x.map(q).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
   a.download=`applied_jobs_${xs}_to_${xe}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Exported '+r.length+' links')}
 /* ---- events ---- */
@@ -153,12 +164,14 @@ document.addEventListener('change',e=>{const t=e.target;
   if(t.id==='vdate'&&t.value){vd=t.value;render()}
   else if(t.id==='xs'||t.id==='xe'||t.id==='xf'){xs=$('xs').value||xs;xe=$('xe').value||xe;xf=$('xf').value;$('xn').textContent=xr().length}
   else if(t.dataset.a==='mv'){const x=V.entries.find(e=>e.id===t.dataset.id);if(x){x.folder=t.value;saveAll();render()}}});
-['q','fr','sl','wp','ind','src','so','nw','un','sa','sh'].forEach(id=>$(id).addEventListener('input',()=>{shown=100;render()}));
+['q','pf','fr','sl','wp','ind','src','so','nw','un','sa','sh'].forEach(id=>$(id).addEventListener('input',()=>{shown=100;render()}));
 $('more').onclick=()=>{shown+=100;render()};
 $('th').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('md').hidden)next()});   // Esc = Not applied
 addEventListener('blur',()=>{if(P.length)away=true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(P.length)away=true}else setTimeout(back,200)});
 addEventListener('focus',()=>setTimeout(back,200));setInterval(back,700);
+$('tz').innerHTML=Object.entries(TZ).map(([k,v])=>`<option value="${k}"${k===tzk?' selected':''}>${v[1]}</option>`).join('');
+$('tz').onchange=()=>{tzk=$('tz').value;sv('fjt_tz',tzk);setUpd();render()};$('pf').addEventListener('input',()=>sv('fjt_pf',$('pf').value));
 setTheme(document.documentElement.dataset.theme||'light');setInterval(load,10*60*1000);load().then(check);
 </script></body></html>

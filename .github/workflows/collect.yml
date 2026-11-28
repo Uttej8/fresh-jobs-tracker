@@ -1,11 +1,17 @@
 name: Collect jobs
+run-name: Collect jobs (${{ github.event_name == 'workflow_dispatch' && inputs.trigger || github.event_name }})
 on:
   schedule:
     # BACKUP timer only. The main trigger is the Supabase scheduled job (see supabase/migration_010_github_trigger.sql),
     # because GitHub's own schedule is best-effort and often late or dropped.
     # 12:25-19:25 UTC Mon-Fri = 5:55 PM to 12:55 AM IST. Each backup run skips boards checked in the last 45 minutes.
     - cron: '25 12-19 * * 1-5'
-  workflow_dispatch: {}       # "Run workflow" button for manual runs at any time
+  workflow_dispatch:          # "Run workflow" button, and the Supabase timer
+    inputs:
+      trigger:
+        description: 'Who started this run (shown in the run title)'
+        required: false
+        default: 'manual'
 concurrency: collect
 jobs:
   collect:

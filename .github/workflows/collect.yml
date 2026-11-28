@@ -1,11 +1,10 @@
 name: Collect jobs
 on:
   schedule:
-    # GitHub cron uses UTC. India (IST) = UTC + 5:30.
-    # Hourly at :10 from 12:10 to 19:10 UTC, Monday-Friday
-    #   = 5:40 PM, 6:40, 7:40, 8:40, 9:40, 10:40, 11:40 PM and 12:40 AM IST (8 runs per working evening).
-    # Every run of a Monday-evening session falls on Monday in UTC, so '1-5' matches your Mon-Fri evenings.
-    - cron: '10 12-19 * * 1-5'
+    # BACKUP timer only. The main trigger is the Supabase scheduled job (see supabase/migration_010_github_trigger.sql),
+    # because GitHub's own schedule is best-effort and often late or dropped.
+    # 12:25-19:25 UTC Mon-Fri = 5:55 PM to 12:55 AM IST. Each backup run skips boards checked in the last 45 minutes.
+    - cron: '25 12-19 * * 1-5'
   workflow_dispatch: {}       # "Run workflow" button for manual runs at any time
 concurrency: collect
 jobs:
@@ -20,8 +19,10 @@ jobs:
           cache: pip
           cache-dependency-path: collector/requirements.txt
       - run: pip install -r collector/requirements.txt
+      - run: echo "event=${{ github.event_name }} slot=${{ github.event.schedule }} at $(date -u +%FT%TZ)"
       - run: python collector/main.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MIN_RECHECK_MINUTES: ${{ github.event_name == 'schedule' && '45' || '0' }}   # GitHub's own timer = backup, so skip fresh boards
           RUN_BUDGET_MINUTES: '30'   # stop starting new boards after this; the rest go first next run

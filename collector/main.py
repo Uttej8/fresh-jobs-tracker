@@ -184,6 +184,14 @@ def main() -> int:
     boards = [b for b in fetch_all(db, 'company_boards', enabled=True)
               if b['source_id'] in enabled and b['source_id'] in COLLECTORS]
     boards.sort(key=lambda b: b.get('last_checked_at') or '')        # least recently checked first
+    gate = float(os.environ.get('MIN_RECHECK_MINUTES', '0'))
+    if gate > 0:    # backup triggers: only do real work if the main run was missed
+        cut = datetime.now(timezone.utc) - timedelta(minutes=gate)
+        total = len(boards)
+        boards = [b for b in boards if not b.get('last_checked_at') or datetime.fromisoformat(b['last_checked_at']) < cut]
+        log.info('recheck gate %.0f min: %d of %d boards due', gate, len(boards), total)
+        if not boards:
+            return 0
     existing: dict = {}
     for r in fetch_all(db, 'jobs', EXISTING_COLS):
         existing.setdefault((r['source_id'], r['board_token']), {})[r['source_job_id']] = r
